@@ -41,7 +41,7 @@ class Config(object):
     DB_NAME = "Alya"
 
     # Bot token
-    TOKEN = ""  # Get bot token from @BotFather on Telegram
+    TOKEN = "7864395424:AAFazk4Qcklkugvax_cDG4vp06WB08gpu6w"  # Get bot token from @BotFather on Telegram
 
     # Owner's Telegram user ID (Must be an integer)
     OWNER_ID = 6617544956
