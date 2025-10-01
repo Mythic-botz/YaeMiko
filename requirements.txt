@@ -45,7 +45,7 @@ motor==2.5.1
 
 # ==== N ====
 #nekos.py==1.1.0
-nekosbest==2.0.4
+nekosbest==1.1.13
 numpy>=1.23.5
 
 # ==== O ====
