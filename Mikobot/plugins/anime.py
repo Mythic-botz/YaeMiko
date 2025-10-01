@@ -1,3 +1,6 @@
+# https://github.com/Mythic-botz/YaeMiko
+# https://github.com/Team-ProjectCodeX
+
 # <============================================== IMPORTS =========================================================>
 import asyncio
 import json
@@ -40,6 +43,16 @@ from pyrogram.types import (
 from Mikobot import BOT_USERNAME, MESSAGE_DUMP, MONGO_DB_URI, app
 from Mikobot.utils.custom_filters import PREFIX_HANDLER
 
+logger = logging.getLogger(__name__)
+logger.debug("Loading anime.py")
+try:
+    from motor.motor_asyncio import AsyncIOMotorClient
+    logger.debug("Successfully imported AsyncIOMotorClient")
+except Exception as e:
+    logger.error(f"Failed to import AsyncIOMotorClient: {e}", exc_info=True)
+    raise
+
+# ... rest of the 5,160 lines unchanged ...
 # <=======================================================================================================>
 
 FILLERS = {}
