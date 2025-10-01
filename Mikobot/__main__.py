@@ -1,4 +1,4 @@
-# https://github.com/Infamous-Hydra/YaeMiko
+# https://github.com/Mythic-botz/YaeMiko
 # https://github.com/Team-ProjectCodeX
 
 # <============================================== IMPORTS =========================================================>
@@ -53,6 +53,7 @@ from Mikobot import (
 from Mikobot.plugins import ALL_MODULES
 from Mikobot.plugins.helper_funcs.chat_status import is_user_admin
 from Mikobot.plugins.helper_funcs.misc import paginate_modules
+from Mikobot.state import init_arq, cleanup  # Add import for ARQ and cleanup
 
 # <=======================================================================================================>
 
@@ -60,7 +61,6 @@ PYTHON_VERSION = python_version()
 PTB_VERSION = telegram.__version__
 PYROGRAM_VERSION = pyrogram.__version__
 TELETHON_VERSION = telethon.__version__
-
 
 # <============================================== FUNCTIONS =========================================================>
 def get_readable_time(seconds: int) -> str:
@@ -88,53 +88,6 @@ def get_readable_time(seconds: int) -> str:
     return ping_time
 
 
-IMPORTED = {}
-MIGRATEABLE = []
-HELPABLE = {}
-STATS = []
-USER_INFO = []
-DATA_IMPORT = []
-DATA_EXPORT = []
-CHAT_SETTINGS = {}
-USER_SETTINGS = {}
-
-for module_name in ALL_MODULES:
-    imported_module = importlib.import_module("Mikobot.plugins." + module_name)
-    if not hasattr(imported_module, "__mod_name__"):
-        imported_module.__mod_name__ = imported_module.__name__
-
-    if imported_module.__mod_name__.lower() not in IMPORTED:
-        IMPORTED[imported_module.__mod_name__.lower()] = imported_module
-    else:
-        raise Exception("Can't have two modules with the same name! Please change one")
-
-    if hasattr(imported_module, "__help__") and imported_module.__help__:
-        HELPABLE[imported_module.__mod_name__.lower()] = imported_module
-
-    # Chats to migrate on chat_migrated events
-    if hasattr(imported_module, "__migrate__"):
-        MIGRATEABLE.append(imported_module)
-
-    if hasattr(imported_module, "__stats__"):
-        STATS.append(imported_module)
-
-    if hasattr(imported_module, "__user_info__"):
-        USER_INFO.append(imported_module)
-
-    if hasattr(imported_module, "__import_data__"):
-        DATA_IMPORT.append(imported_module)
-
-    if hasattr(imported_module, "__export_data__"):
-        DATA_EXPORT.append(imported_module)
-
-    if hasattr(imported_module, "__chat_settings__"):
-        CHAT_SETTINGS[imported_module.__mod_name__.lower()] = imported_module
-
-    if hasattr(imported_module, "__user_settings__"):
-        USER_SETTINGS[imported_module.__mod_name__.lower()] = imported_module
-
-
-# do not async
 async def send_help(chat_id, text, keyboard=None):
     if not keyboard:
         keyboard = InlineKeyboardMarkup(paginate_modules(0, HELPABLE, "help"))
@@ -191,7 +144,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(0.2)
             guu = await update.effective_message.reply_text("🐾")
             await asyncio.sleep(1.8)
-            await guu.delete()  # Await this line
+            await guu.delete()
             await update.effective_message.reply_text(
                 PM_START_TEXT,
                 reply_markup=InlineKeyboardMarkup(START_BTN),
@@ -202,7 +155,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_photo(
             photo=str(choice(START_IMG)),
             reply_markup=InlineKeyboardMarkup(GROUP_START_BTN),
-            caption="<b>I am Alive!</b>\n\n<b>Since​:</b> <code>{}</code>".format(
+            caption="<b>I am Alive!</b>\n\n<b>Since:</b> <code>{}</code>".format(
                 uptime
             ),
             parse_mode=ParseMode.HTML,
@@ -210,7 +163,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def extra_command_handlered(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     keyboard = [
         [
             InlineKeyboardButton("MANAGEMENT", callback_data="help_back"),
@@ -237,7 +189,7 @@ async def extra_command_handlered(update: Update, context: ContextTypes.DEFAULT_
 async def extra_command_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query.data == "extra_command_handler":
-        await query.answer()  # Use 'await' for asynchronous calls
+        await query.answer()
         await query.message.edit_text(
             "𝙎𝙚𝙡𝙚𝙘𝙩 𝙩𝙝𝙚 [𝙨𝙚𝙘𝙩𝙞𝙤𝙣](https://telegra.ph/file/8c092f4e9d303f9497c83.jpg) 𝙩𝙝𝙖𝙩 𝙮𝙤𝙪 𝙬𝙖𝙣𝙩 𝙩𝙤 𝙤𝙥𝙚𝙣",
             reply_markup=InlineKeyboardMarkup(
@@ -259,7 +211,7 @@ async def extra_command_callback(update: Update, context: ContextTypes.DEFAULT_T
                     ],
                 ]
             ),
-            parse_mode="Markdown",  # Added this line to explicitly specify Markdown parsing
+            parse_mode="Markdown",
         )
 
 
@@ -444,7 +396,7 @@ async def anime_command_callback(update: Update, context: ContextTypes.DEFAULT_T
                     ],
                 ]
             ),
-            parse_mode="Markdown",  # Added this line to explicitly specify Markdown parsing
+            parse_mode="Markdown",
         )
 
 
@@ -469,23 +421,19 @@ async def genshin_command_callback(update: Update, context: ContextTypes.DEFAULT
                     ],
                 ]
             ),
-            parse_mode="Markdown",  # Added this line to explicitly specify Markdown parsing
+            parse_mode="Markdown",
         )
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log the error and send a telegram message to notify the developer."""
-    # Log the error before we do anything else, so we can see it even if something breaks.
     LOGGER.error(msg="Exception while handling an update:", exc_info=context.error)
 
-    # traceback.format_exception returns the usual python message about an exception, but as a
-    # list of strings rather than a single string, so we have to join them together.
     tb_list = traceback.format_exception(
         None, context.error, context.error.__traceback__
     )
     tb = "".join(tb_list)
 
-    # Build the message with some markup and additional information about what happened.
     message = (
         "An exception was raised while handling an update\n"
         "<pre>update = {}</pre>\n\n"
@@ -497,13 +445,11 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(message) >= 4096:
         message = message[:4096]
-    # Finally, send the message
     await context.bot.send_message(
         chat_id=OWNER_ID, text=message, parse_mode=ParseMode.HTML
     )
 
 
-# for test purposes
 async def error_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     error = context.error
     try:
@@ -511,26 +457,19 @@ async def error_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Forbidden:
         print("no nono1")
         print(error)
-        # remove update.message.chat_id from conversation list
     except BadRequest:
         print("no nono2")
         print("BadRequest caught")
         print(error)
-
-        # handle malformed requests - read more below!
     except TimedOut:
         print("no nono3")
-        # handle slow connection problems
     except NetworkError:
         print("no nono4")
-        # handle other connection problems
     except ChatMigrated as err:
         print("no nono5")
         print(err)
-        # the chat_id of a group has changed, use e.new_chat_id instead
     except TelegramError:
         print(error)
-        # handle all other telegram related errors
 
 
 async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -622,12 +561,11 @@ async def gitsource_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
 
     if query.data == "git_source":
-        source_link = "https://github.com/Infamous-Hydra/YaeMiko"
+        source_link = "https://github.com/Mythic-botz/YaeMiko"
         message_text = (
             f"*Here is the link for the public source repo*:\n\n{source_link}"
         )
 
-        # Adding the inline button
         keyboard = [[InlineKeyboardButton(text="◁", callback_data="Miko_back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -640,7 +578,7 @@ async def gitsource_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def repo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    source_link = "https://github.com/Infamous-Hydra/YaeMiko"
+    source_link = "https://github.com/Mythic-botz/YaeMiko"
     message_text = f"*Here is the link for the public source repo*:\n\n{source_link}"
 
     await context.bot.send_message(
@@ -718,10 +656,9 @@ async def Miko_about_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def get_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat  # type: Optional[Chat]
+    chat = update.effective_chat
     args = update.effective_message.text.split(None, 1)
 
-    # ONLY send help in PM
     if chat.type != chat.PRIVATE:
         if len(args) >= 2 and any(args[1].lower() == x for x in HELPABLE):
             module = args[1].lower()
@@ -761,7 +698,7 @@ async def get_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ],
                 ]
             ),
-            parse_mode="Markdown",  # Added this line to explicitly specify Markdown parsing
+            parse_mode="Markdown",
         )
         return
 
@@ -820,7 +757,7 @@ async def send_settings(chat_id, user_id, user=False):
             await dispatcher.bot.send_message(
                 user_id,
                 "Seems like there aren't any chat settings available :'(\nSend this "
-                "in a group chat you're admin in to find its current settings!",
+                "in a group chat you're admin in to find disclosing its current settings!",
                 parse_mode=ParseMode.MARKDOWN,
             )
 
@@ -896,7 +833,6 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ),
             )
 
-        # ensure no spinny white circle
         bot.answer_callback_query(query.id)
         await query.message.delete()
     except BadRequest as excp:
@@ -909,11 +845,10 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat  # type: Optional[Chat]
-    user = update.effective_user  # type: Optional[User]
-    msg = update.effective_message  # type: Optional[Message]
+    chat = update.effective_chat
+    user = update.effective_user
+    msg = update.effective_message
 
-    # ONLY send settings in PM
     if chat.type != chat.PRIVATE:
         if is_user_admin(chat, user.id):
             text = "Click here to get this chat's settings, as well as yours."
@@ -940,7 +875,7 @@ async def get_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.effective_message  # type: Optional[Message]
+    msg = update.effective_message
     if msg.migrate_to_chat_id:
         old_chat = update.effective_chat.id
         new_chat = msg.migrate_to_chat_id
@@ -960,7 +895,6 @@ async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # <=======================================================================================================>
-
 
 # <=================================================== MAIN ====================================================>
 def main():
@@ -1006,7 +940,15 @@ def main():
 if __name__ == "__main__":
     try:
         LOGGER.info("Successfully loaded modules: " + str(ALL_MODULES))
+        LOGGER.info("Starting telethon client")
         tbot.start(bot_token=TOKEN)
+        LOGGER.info("Telethon client started, getting bot info")
+        bot_info = loop.run_until_complete(tbot.get_me())
+        LOGGER.info(f"Bot info: {bot_info.username}")
+        LOGGER.info("Initializing ARQ")
+        global arq
+        arq = loop.run_until_complete(init_arq())
+        LOGGER.info("ARQ initialized")
         app.start()
         main()
     except KeyboardInterrupt:
@@ -1016,6 +958,8 @@ if __name__ == "__main__":
         LOGGER.info(err)
     finally:
         try:
+            LOGGER.info("Cleaning up sessions")
+            loop.run_until_complete(cleanup())
             if loop.is_running():
                 loop.stop()
         finally:
