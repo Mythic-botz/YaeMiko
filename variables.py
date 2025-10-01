@@ -19,31 +19,32 @@ class Config(object):
 
     # <================================================ REQUIRED ======================================================>
     # Telegram API configuration
-    API_ID = 204 # Get this value from my.telegram.org/apps
-    API_HASH = ""
+    API_ID = 23476863 # Get this value from my.telegram.org/apps
+    API_HASH = "69daa0835439c4211f34c2e9ad0acb5c"
 
     # Database configuration (PostgreSQL)
-    DATABASE_URL = "postgres:"
+    import os
+    DATABASE_URL = os.getenv("DATABASE_URL")
 
     # Event logs chat ID and message dump chat ID
-    EVENT_LOGS = -100
-    MESSAGE_DUMP = -100
+    EVENT_LOGS = -1003181893774
+    MESSAGE_DUMP = -1003167451829
 
     # MongoDB configuration
-    MONGO_DB_URI = ""
+    MONGO_DB_URI = "mongodb+srv://Alya:AlisaFilebot@cluster0.ahrx8jo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
     # Support chat and support ID
     SUPPORT_CHAT = ""
-    SUPPORT_ID = -100
+    SUPPORT_ID = -1002368259485
 
     # Database name
-    DB_NAME = ""
+    DB_NAME = "Alya"
 
     # Bot token
     TOKEN = ""  # Get bot token from @BotFather on Telegram
 
     # Owner's Telegram user ID (Must be an integer)
-    OWNER_ID = 5907205317
+    OWNER_ID = 6617544956
     # <=======================================================================================================>
 
     # <================================================ OPTIONAL ======================================================>
