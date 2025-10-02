@@ -52,6 +52,24 @@ except Exception as e:
     logger.error(f"Failed to import AsyncIOMotorClient: {e}", exc_info=True)
     raise
 
+
+
+# =================== PATCH for PyMongo 4.x count() ===================
+import pymongo.cursor
+
+_original_count = pymongo.cursor.Cursor.count
+def _patched_count(self, *args, **kwargs):
+    if hasattr(self, "_Cursor__collection"):
+        coll = self._Cursor__collection
+    else:
+        coll = getattr(self, "collection", None)
+    if coll is None:
+        return 0
+    return coll.count_documents(self._Cursor__spec)
+pymongo.cursor.Cursor.count = _patched_count
+# =====================================================================
+
+
 # ... rest of the 5,160 lines unchanged ...
 # <=======================================================================================================>
 
