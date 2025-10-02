@@ -2,11 +2,11 @@
 # https://github.com/Team-ProjectCodeX
 
 # <============================================== IMPORTS =========================================================>
-import logging
 import asyncio
 import contextlib
 import importlib
 import json
+import logging
 import os
 import re
 import time
@@ -14,36 +14,21 @@ import traceback
 from platform import python_version
 from random import choice
 
-from telethon import TelegramClient
-
 import psutil
-import pyrogram
 import telegram
-import telethon
 from aiohttp import web
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
-from telegram.error import (
-    BadRequest,
-    ChatMigrated,
-    Forbidden,
-    NetworkError,
-    TelegramError,
-    TimedOut,
-)
+from telegram.error import BadRequest, ChatMigrated, Forbidden, NetworkError, TelegramError, TimedOut
 from telegram.ext import (
-    Application,
     ApplicationBuilder,
-    ApplicationHandlerStop,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
 )
-from telegram.helpers import escape_markdown
 
-from Infamous.karma import *
 from Mikobot import (
     BOT_NAME,
     LOGGER,
@@ -51,69 +36,87 @@ from Mikobot import (
     SUPPORT_CHAT,
     TOKEN,
     StartTime,
-    app,
-    dispatcher,
-    function,
-    loop,
-    tbot,
 )
 from Mikobot.plugins import ALL_MODULES
 from Mikobot.plugins.helper_funcs.chat_status import is_user_admin
 from Mikobot.plugins.helper_funcs.misc import paginate_modules
 from Mikobot.state import init_arq, cleanup
 
-# <=======================================================================================================>
+# <============================================== LOGGING =========================================================>
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+LOGGER = logging.getLogger("Mikobot")
 
-PYTHON_VERSION = python_version()
-PTB_VERSION = telegram.__version__
-PYROGRAM_VERSION = pyrogram.__version__
-TELETHON_VERSION = telethon.__version__
+# <============================================== ENV VARIABLES =========================================================>
+TOKEN = os.getenv("TOKEN")
+if not TOKEN:
+    raise ValueError("TOKEN environment variable not set")
 
-# Initialize dictionaries
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+if not WEBHOOK_URL:
+    raise ValueError("WEBHOOK_URL environment variable not set")
+
+PORT = int(os.getenv("PORT", 8000))
+
+# <============================================== EVENT LOOP =========================================================>
+loop = asyncio.get_event_loop()
+
+# <============================================== PTB APPLICATION =========================================================>
+app = ApplicationBuilder().token(TOKEN).build()
+
+# <============================================== MODULE DICTIONARIES =========================================================>
 IMPORTED = {}
-MIGRATEABLE = []
 HELPABLE = {}
 STATS = []
 USER_INFO = []
+MIGRATEABLE = []
 DATA_IMPORT = []
 DATA_EXPORT = []
 CHAT_SETTINGS = {}
 USER_SETTINGS = {}
 
-# Load modules and populate dictionaries
-for module_name in ALL_MODULES:
-    imported_module = importlib.import_module("Mikobot.plugins." + module_name)
-    if not hasattr(imported_module, "__mod_name__"):
-        imported_module.__mod_name__ = imported_module.__name__
+# <============================================== MODULE LOADING =========================================================>
+def load_modules():
+    global IMPORTED, HELPABLE, STATS, USER_INFO, MIGRATEABLE, DATA_IMPORT, DATA_EXPORT, CHAT_SETTINGS, USER_SETTINGS
+    for module_name in ALL_MODULES:
+        try:
+            imported_module = importlib.import_module("Mikobot.plugins." + module_name)
+            LOGGER.info(f"Loaded module: {module_name}")
+            if not hasattr(imported_module, "__mod_name__"):
+                imported_module.__mod_name__ = imported_module.__name__
 
-    if imported_module.__mod_name__.lower() not in IMPORTED:
-        IMPORTED[imported_module.__mod_name__.lower()] = imported_module
-    else:
-        raise Exception("Can't have two modules with the same name! Please change one")
+            if imported_module.__mod_name__.lower() not in IMPORTED:
+                IMPORTED[imported_module.__mod_name__.lower()] = imported_module
+            else:
+                raise Exception(f"Can't have two modules with the same name: {module_name}")
 
-    if hasattr(imported_module, "__help__") and imported_module.__help__:
-        HELPABLE[imported_module.__mod_name__.lower()] = imported_module
+            if hasattr(imported_module, "__help__") and imported_module.__help__:
+                HELPABLE[imported_module.__mod_name__.lower()] = imported_module
 
-    if hasattr(imported_module, "__migrate__"):
-        MIGRATEABLE.append(imported_module)
+            if hasattr(imported_module, "__migrate__"):
+                MIGRATEABLE.append(imported_module)
 
-    if hasattr(imported_module, "__stats__"):
-        STATS.append(imported_module)
+            if hasattr(imported_module, "__stats__"):
+                STATS.append(imported_module)
 
-    if hasattr(imported_module, "__user_info__"):
-        USER_INFO.append(imported_module)
+            if hasattr(imported_module, "__user_info__"):
+                USER_INFO.append(imported_module)
 
-    if hasattr(imported_module, "__import_data__"):
-        DATA_IMPORT.append(imported_module)
+            if hasattr(imported_module, "__import_data__"):
+                DATA_IMPORT.append(imported_module)
 
-    if hasattr(imported_module, "__export_data__"):
-        DATA_EXPORT.append(imported_module)
+            if hasattr(imported_module, "__export_data__"):
+                DATA_EXPORT.append(imported_module)
 
-    if hasattr(imported_module, "__chat_settings__"):
-        CHAT_SETTINGS[imported_module.__mod_name__.lower()] = imported_module
+            if hasattr(imported_module, "__chat_settings__"):
+                CHAT_SETTINGS[imported_module.__mod_name__.lower()] = imported_module
 
-    if hasattr(imported_module, "__user_settings__"):
-        USER_SETTINGS[imported_module.__mod_name__.lower()] = imported_module
+            if hasattr(imported_module, "__user_settings__"):
+                USER_SETTINGS[imported_module.__mod_name__.lower()] = imported_module
+        except Exception as e:
+            LOGGER.error(f"Failed to load module {module_name}: {e}", exc_info=True)
 
 # <============================================== FUNCTIONS =========================================================>
 def get_readable_time(seconds: int) -> str:
@@ -144,7 +147,7 @@ def get_readable_time(seconds: int) -> str:
 async def send_help(chat_id, text, keyboard=None):
     if not keyboard:
         keyboard = InlineKeyboardMarkup(paginate_modules(0, HELPABLE, "help"))
-    await dispatcher.bot.send_message(
+    await app.bot.send_message(
         chat_id=chat_id,
         text=text,
         parse_mode=ParseMode.MARKDOWN,
@@ -176,7 +179,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 IMPORTED["exᴛʀᴀs"].markdown_help_sender(update)
             elif args[0].lower().startswith("stngs_"):
                 match = re.match("stngs_(.*)", args[0].lower())
-                chat = await dispatcher.bot.get_chat(match.group(1))
+                chat = await app.bot.get_chat(match.group(1))
                 if await is_user_admin(chat, update.effective_user.id):
                     await send_settings(match.group(1), update.effective_user.id, False)
                 else:
@@ -282,7 +285,7 @@ async def ai_command_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     if query.data == "ai_command_handler":
         await query.answer()
         await query.message.edit_text(
-            "🧠 *Here are the options for* [𝗬𝗔𝗘 �_M𝗜𝗞𝗢](https://telegra.ph/file/ed2d9c3693cacc9b0464e.jpg):",
+            "🧠 *Here are the options for* [𝗬𝗔𝗘 𝗠𝗜𝗞𝗢](https://telegra.ph/file/ed2d9c3693cacc9b0464e.jpg):",
             reply_markup=InlineKeyboardMarkup(
                 [
                     [
@@ -497,21 +500,17 @@ async def error_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         raise error
     except Forbidden:
-        print("no nono1")
-        print(error)
+        LOGGER.error("Forbidden error", exc_info=True)
     except BadRequest:
-        print("no nono2")
-        print("BadRequest caught")
-        print(error)
+        LOGGER.error("BadRequest error", exc_info=True)
     except TimedOut:
-        print("no nono3")
+        LOGGER.error("TimedOut error", exc_info=True)
     except NetworkError:
-        print("no nono4")
+        LOGGER.error("NetworkError error", exc_info=True)
     except ChatMigrated as err:
-        print("no nono5")
-        print(err)
+        LOGGER.error(f"ChatMigrated error: {err}", exc_info=True)
     except TelegramError:
-        print(error)
+        LOGGER.error("TelegramError error", exc_info=True)
 
 
 async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -579,10 +578,8 @@ async def stats_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ➼ CPU: {cpu}%
 ➼ RAM: {mem}%
 ➼ DISK: {disk}%
-➼ PYTHON: {PYTHON_VERSION}
-➼ PTB: {PTB_VERSION}
-➼ TELETHON: {TELETHON_VERSION}
-➼ PYROGRAM: {PYROGRAM_VERSION}
+➼ PYTHON: {python_version()}
+➼ PTB: {telegram.__version__}
 """
         await query.answer(text=text, show_alert=True)
 
@@ -714,7 +711,7 @@ async def get_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ],
                     [
                         InlineKeyboardButton(
-                            text="OPEN HERE",
+                            "OPEN HERE",
                             callback_data="extra_command_handler",
                         )
                     ],
@@ -747,21 +744,21 @@ async def send_settings(chat_id, user_id, user=False):
                 f"*{mod.__mod_name__}*:\n{mod.__user_settings__(user_id)}"
                 for mod in USER_SETTINGS.values()
             )
-            await dispatcher.bot.send_message(
+            await app.bot.send_message(
                 user_id,
                 "These are your current settings:" + "\n\n" + settings,
                 parse_mode=ParseMode.MARKDOWN,
             )
         else:
-            await dispatcher.bot.send_message(
+            await app.bot.send_message(
                 user_id,
                 "Seems like there aren't any user specific settings available :'(",
                 parse_mode=ParseMode.MARKDOWN,
             )
     else:
         if CHAT_SETTINGS:
-            chat_name = (await dispatcher.bot.get_chat(chat_id)).title
-            await dispatcher.bot.send_message(
+            chat_name = (await app.bot.get_chat(chat_id)).title
+            await app.bot.send_message(
                 user_id,
                 text=f"Which module would you like to check {chat_name}'s settings for?",
                 reply_markup=InlineKeyboardMarkup(
@@ -769,7 +766,7 @@ async def send_settings(chat_id, user_id, user=False):
                 ),
             )
         else:
-            await dispatcher.bot.send_message(
+            await app.bot.send_message(
                 user_id,
                 "Seems like there aren't any chat settings available :'(\nSend this "
                 "in a group chat you're admin in to find its current settings!",
@@ -853,33 +850,6 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             LOGGER.exception("Exception in settings buttons. %s", str(query.data))
 
 
-async def get_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    user = update.effective_user
-    msg = update.effective_message
-    if chat.type != chat.PRIVATE:
-        if await is_user_admin(chat, user.id):
-            text = "Click here to get this chat's settings, as well as yours."
-            await msg.reply_text(
-                text,
-                reply_markup=InlineKeyboardMarkup(
-                    [
-                        [
-                            InlineKeyboardButton(
-                                text="SETTINGS",
-                                url=f"t.me/{context.bot.username}?start=stngs_{chat.id}",
-                            )
-                        ]
-                    ]
-                ),
-            )
-        else:
-            text = "Click here to check your settings."
-            await msg.reply_text(text)
-    else:
-        await send_settings(chat.id, user.id, True)
-
-
 async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if msg.migrate_to_chat_id:
@@ -895,88 +865,9 @@ async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with contextlib.suppress(KeyError, AttributeError):
             mod.__migrate__(old_chat, new_chat)
     LOGGER.info("Successfully Migrated!")
-    raise ApplicationHandlerStop
 
 
-import os
-import asyncio
-import logging
-import traceback
-from aiohttp import web
-
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    filters,
-    ContextTypes,
-)
-
-# ------------------- LOGGING -------------------
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
-LOGGER = logging.getLogger("Mikobot")
-
-# ------------------- ENV VARIABLES -------------------
-TOKEN = os.getenv("TOKEN")
-if not TOKEN:
-    raise ValueError("TOKEN environment variable not set")
-
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-if not WEBHOOK_URL:
-    raise ValueError("WEBHOOK_URL environment variable not set")
-
-PORT = int(os.getenv("PORT", 8000))
-
-# ------------------- EVENT LOOP -------------------
-loop = asyncio.get_event_loop()
-
-# ------------------- PTB APPLICATION -------------------
-app = ApplicationBuilder().token(TOKEN).build()
-
-# ------------------- IMPORT MODULE HANDLERS -------------------
-# Import your module handlers here
-# Example:
-#from Mikobot.plugins.start import start
-#from Mikobot.plugins.help import extra_command_handlered, help_button
-#from Mikobot.plugins.settings import get_settings, settings_button
-#from Mikobot.plugins.repo import repo
-#from Mikobot.plugins.ai import ai_command, ai_handler_callback, more_ai_handler_callback, ai_command_callback
-#from Mikobot.plugins.anime import anime_command_callback, more_aihandlered_callback
-#from Mikobot.plugins.extra import extra_command_callback
-#from Mikobot.plugins.genshin import genshin_command_callback
-#from Mikobot.plugins.stats import stats_back
-#from Mikobot.plugins.migrate import migrate_chats
-# Add any other modules here
-
-# ------------------- ERROR HANDLER -------------------
-async def error_callback(update: object, context: ContextTypes.DEFAULT_TYPE):
-    LOGGER.error(f"Update {update} caused error {context.error}")
-
-# ------------------- WEBHOOK HANDLER -------------------
-async def webhook_update(update: dict):
-    try:
-        update_obj = Update.de_json(update, app.bot)
-        app.update_queue.put_nowait(update_obj)
-    except Exception as e:
-        LOGGER.error(f"Webhook update error: {e}")
-
-async def webhook_handler(request: web.Request) -> web.Response:
-    if request.method == "POST":
-        try:
-            update = await request.json()
-            await webhook_update(update)
-            return web.Response(status=200)
-        except Exception as e:
-            LOGGER.error(f"Webhook handler error: {e}")
-            return web.Response(status=500, text=str(e))
-    return web.Response(status=400, text="Bad request")
-
-# ------------------- REGISTER ALL HANDLERS -------------------
+# <============================================== REGISTER HANDLERS =========================================================>
 def register_handlers():
     # Core commands
     app.add_handler(CommandHandler("start", start))
@@ -1003,10 +894,49 @@ def register_handlers():
     app.add_handler(MessageHandler(filters.StatusUpdate.MIGRATE, migrate_chats))
 
     # Error handler
-    app.add_error_handler(error_callback)
+    app.add_error_handler(error_handler)
 
-# ------------------- MAIN -------------------
+    # Log registered handlers
+    LOGGER.info("Registered command handlers:")
+    for handler in app.handlers[0]:  # Group 0 handlers
+        if isinstance(handler, CommandHandler):
+            LOGGER.info(f"Command: {handler.commands}")
+        elif isinstance(handler, CallbackQueryHandler):
+            LOGGER.info(f"Callback pattern: {handler.pattern}")
+
+# <============================================== WEBHOOK HANDLER =========================================================>
+async def webhook_update(update: dict):
+    try:
+        update_obj = Update.de_json(update, app.bot)
+        await app.update_queue.put(update_obj)
+    except Exception as e:
+        LOGGER.error(f"Webhook update error: {e}", exc_info=True)
+
+
+async def webhook_handler(request: web.Request) -> web.Response:
+    if request.method == "POST":
+        try:
+            update = await request.json()
+            await webhook_update(update)
+            return web.Response(status=200)
+        except Exception as e:
+            LOGGER.error(f"Webhook handler error: {e}", exc_info=True)
+            return web.Response(status=500, text=str(e))
+    return web.Response(status=400, text="Bad request")
+
+
+# <============================================== MAIN =========================================================>
 def main():
+    # Load modules
+    LOGGER.info("Loading modules: " + str(ALL_MODULES))
+    load_modules()
+
+    # Initialize ARQ
+    global arq
+    arq = loop.run_until_complete(init_arq())
+    LOGGER.info("ARQ initialized")
+
+    # Register handlers
     register_handlers()
 
     # Start aiohttp webhook server
@@ -1016,12 +946,13 @@ def main():
     LOGGER.info(f"Starting web server on port {PORT}")
     web.run_app(web_app, host="0.0.0.0", port=PORT, loop=loop)
 
-# ------------------- RUN -------------------
+
+# <============================================== RUN =========================================================>
 if __name__ == "__main__":
     try:
         LOGGER.info("Starting Mikobot...")
 
-        # Initialize & start PTB bot properly
+        # Initialize & start PTB bot
         loop.run_until_complete(app.initialize())
         loop.run_until_complete(app.start())
         loop.run_until_complete(
@@ -1038,6 +969,7 @@ if __name__ == "__main__":
         LOGGER.error(traceback.format_exc())
     finally:
         try:
+            loop.run_until_complete(cleanup())
             loop.run_until_complete(app.stop())
             loop.run_until_complete(app.shutdown())
             loop.run_until_complete(app.bot.delete_webhook())
