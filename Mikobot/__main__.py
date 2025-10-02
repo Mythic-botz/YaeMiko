@@ -32,6 +32,7 @@ from telegram.error import (
 )
 from telegram.ext import (
     Application,
+    ApplicationBuilder,
     ApplicationHandlerStop,
     CallbackQueryHandler,
     CommandHandler,
@@ -896,26 +897,64 @@ async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raise ApplicationHandlerStop
 
 
-# Event loop
+# ------------------- LOGGING -------------------
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+LOGGER = logging.getLogger("Mikobot")
+
+# ------------------- ENV VARIABLES -------------------
+TOKEN = os.getenv("TOKEN")
+if not TOKEN:
+    raise ValueError("TOKEN environment variable not set")
+
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+if not WEBHOOK_URL:
+    raise ValueError("WEBHOOK_URL environment variable not set")
+
+PORT = int(os.getenv("PORT", 8000))
+
+# ------------------- EVENT LOOP -------------------
 loop = asyncio.get_event_loop()
 
-# PTB Application
-app = Application.builder().token(TOKEN).build()
+# ------------------- PTB APPLICATION -------------------
+app = ApplicationBuilder().token(TOKEN).build()
 
-# Telethon client
-tbot = TelegramClient("tbot", api_id=int(os.getenv("API_ID")), api_hash=os.getenv("API_HASH"))
+# ------------------- COMMAND HANDLERS -------------------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🤖 Mikobot is online!")
 
-# ================================================= WEBHOOK HANDLER ================================================= #
+async def get_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📖 Help info here!")
 
+async def get_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("⚙️ Settings panel placeholder")
+
+async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("Help button clicked!")
+
+async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("Settings button clicked!")
+
+# Example AI command placeholder
+async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("AI command received!")
+
+# Error handler
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    LOGGER.error(f"Update {update} caused error {context.error}")
+
+# ------------------- WEBHOOK HANDLER -------------------
 async def webhook_update(update: dict):
-    """Handle incoming webhook updates"""
     try:
         update_obj = Update.de_json(update, app.bot)
-        # Instead of dispatcher.process_update, push update into PTB queue
+        # Push update to PTB update queue
         app.update_queue.put_nowait(update_obj)
     except Exception as e:
         LOGGER.error(f"Webhook update error: {e}")
-
 
 async def webhook_handler(request: web.Request) -> web.Response:
     if request.method == "POST":
@@ -928,88 +967,52 @@ async def webhook_handler(request: web.Request) -> web.Response:
             return web.Response(status=500, text=str(e))
     return web.Response(status=400, text="Bad request")
 
-# ================================================= MAIN ================================================= #
-
+# ------------------- MAIN -------------------
 def main():
-    # Register handlers
+    # Register command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", get_help))
-    app.add_handler(CallbackQueryHandler(help_button, pattern=r"help_.*"))
     app.add_handler(CommandHandler("settings", get_settings))
+    app.add_handler(CallbackQueryHandler(help_button, pattern=r"help_.*"))
     app.add_handler(CallbackQueryHandler(settings_button, pattern=r"stngs_"))
-    app.add_handler(CommandHandler("repo", repo))
-    app.add_handler(CallbackQueryHandler(Miko_about_callback, pattern=r"Miko_"))
-    app.add_handler(CallbackQueryHandler(gitsource_callback, pattern=r"git_source"))
-    app.add_handler(CallbackQueryHandler(stats_back, pattern=r"insider_"))
-    app.add_handler(MessageHandler(filters.StatusUpdate.MIGRATE, migrate_chats))
-    app.add_handler(CallbackQueryHandler(ai_handler_callback, pattern=r"ai_handler"))
-    app.add_handler(CallbackQueryHandler(more_ai_handler_callback, pattern=r"more_ai_handler"))
-    app.add_handler(CallbackQueryHandler(ai_command_callback, pattern=r"ai_command_handler"))
-    app.add_handler(CallbackQueryHandler(anime_command_callback, pattern=r"anime_command_handler"))
-    app.add_handler(CallbackQueryHandler(more_aihandlered_callback, pattern=r"more_aihandlered"))
-    app.add_handler(CallbackQueryHandler(extra_command_callback, pattern=r"extra_command_handler"))
     app.add_handler(CommandHandler("ai", ai_command))
-    app.add_handler(CallbackQueryHandler(genshin_command_callback, pattern=r"genshin_command_handler"))
 
-    # Error Handlers
+    # Error handler
     app.add_error_handler(error_handler)
-    app.add_error_handler(error_callback)
 
+    # Start aiohttp webhook server
+    web_app = web.Application()
+    web_app.router.add_post("/webhook", webhook_handler)
 
+    LOGGER.info(f"Starting web server on port {PORT}")
+    web.run_app(web_app, host="0.0.0.0", port=PORT, loop=loop)
+
+# ------------------- RUN -------------------
 if __name__ == "__main__":
     try:
-        LOGGER.info("Successfully loaded modules: " + str(ALL_MODULES))
-        LOGGER.info("Starting telethon client")
-        tbot.start(bot_token=TOKEN)
-        LOGGER.info("Telethon client started, getting bot info")
-        bot_info = loop.run_until_complete(tbot.get_me())
-        LOGGER.info(f"Bot info: {bot_info.username}")
-        LOGGER.info("Initializing ARQ")
-        global arq
-        arq = loop.run_until_complete(init_arq())
-        LOGGER.info("ARQ initialized")
+        LOGGER.info("Starting Mikobot...")
 
-        # Set up webhook
-        WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-        if not WEBHOOK_URL:
-            raise ValueError("WEBHOOK_URL environment variable not set")
-
-        # ✅ Proper PTB init
+        # Initialize & start PTB bot properly
         loop.run_until_complete(app.initialize())
         loop.run_until_complete(app.start())
-
-        LOGGER.info("Setting webhook")
         loop.run_until_complete(
-            app.bot.set_webhook(
-                url=f"{WEBHOOK_URL}/webhook",
-                allowed_updates=Update.ALL_TYPES,
-            )
+            app.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook", allowed_updates=Update.ALL_TYPES)
         )
-        LOGGER.info(f"Webhook set to {WEBHOOK_URL}/webhook")
+        LOGGER.info(f"Webhook set: {WEBHOOK_URL}/webhook")
 
-        # Start aiohttp server
-        web_app = web.Application()
-        web_app.router.add_post("/webhook", webhook_handler)
-        port = int(os.getenv("PORT", 8000))
-        LOGGER.info(f"Starting web server on port {port}")
-        web.run_app(web_app, host="0.0.0.0", port=port, loop=loop)
+        # Start main loop
+        main()
 
     except KeyboardInterrupt:
-        pass
+        LOGGER.info("Stopping Mikobot...")
     except Exception:
-        err = traceback.format_exc()
-        LOGGER.info(err)
+        LOGGER.error(traceback.format_exc())
     finally:
         try:
-            LOGGER.info("Cleaning up sessions")
             loop.run_until_complete(app.stop())
             loop.run_until_complete(app.shutdown())
             loop.run_until_complete(app.bot.delete_webhook())
-            if loop.is_running():
-                loop.stop()
         finally:
             loop.close()
-        LOGGER.info(
-            "------------------------ Stopped Services ------------------------"
-        )
+        LOGGER.info("------------------------ Stopped Services ------------------------")
 # <==================================================== END ===================================================>
