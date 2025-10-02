@@ -898,6 +898,22 @@ async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raise ApplicationHandlerStop
 
 
+import os
+import asyncio
+import logging
+import traceback
+from aiohttp import web
+
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+)
+
 # ------------------- LOGGING -------------------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -922,37 +938,29 @@ loop = asyncio.get_event_loop()
 # ------------------- PTB APPLICATION -------------------
 app = ApplicationBuilder().token(TOKEN).build()
 
-# ------------------- COMMAND HANDLERS -------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Mikobot is online!")
+# ------------------- IMPORT MODULE HANDLERS -------------------
+# Import your module handlers here
+# Example:
+from Mikobot.plugins.start import start
+from Mikobot.plugins.help import extra_command_handlered, help_button
+from Mikobot.plugins.settings import get_settings, settings_button
+from Mikobot.plugins.repo import repo
+from Mikobot.plugins.ai import ai_command, ai_handler_callback, more_ai_handler_callback, ai_command_callback
+from Mikobot.plugins.anime import anime_command_callback, more_aihandlered_callback
+from Mikobot.plugins.extra import extra_command_callback
+from Mikobot.plugins.genshin import genshin_command_callback
+from Mikobot.plugins.stats import stats_back
+from Mikobot.plugins.migrate import migrate_chats
+# Add any other modules here
 
-async def get_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📖 Help info here!")
-
-async def get_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⚙️ Settings panel placeholder")
-
-async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    await update.callback_query.edit_message_text("Help button clicked!")
-
-async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    await update.callback_query.edit_message_text("Settings button clicked!")
-
-# Example AI command placeholder
-async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("AI command received!")
-
-# Error handler
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+# ------------------- ERROR HANDLER -------------------
+async def error_callback(update: object, context: ContextTypes.DEFAULT_TYPE):
     LOGGER.error(f"Update {update} caused error {context.error}")
 
 # ------------------- WEBHOOK HANDLER -------------------
 async def webhook_update(update: dict):
     try:
         update_obj = Update.de_json(update, app.bot)
-        # Push update to PTB update queue
         app.update_queue.put_nowait(update_obj)
     except Exception as e:
         LOGGER.error(f"Webhook update error: {e}")
@@ -968,18 +976,38 @@ async def webhook_handler(request: web.Request) -> web.Response:
             return web.Response(status=500, text=str(e))
     return web.Response(status=400, text="Bad request")
 
-# ------------------- MAIN -------------------
-def main():
-    # Register command handlers
+# ------------------- REGISTER ALL HANDLERS -------------------
+def register_handlers():
+    # Core commands
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", get_help))
+    app.add_handler(CommandHandler("help", extra_command_handlered))
     app.add_handler(CommandHandler("settings", get_settings))
-    app.add_handler(CallbackQueryHandler(help_button, pattern=r"help_.*"))
-    app.add_handler(CallbackQueryHandler(settings_button, pattern=r"stngs_"))
+    app.add_handler(CommandHandler("repo", repo))
     app.add_handler(CommandHandler("ai", ai_command))
 
+    # Callback queries
+    app.add_handler(CallbackQueryHandler(help_button, pattern=r"help_.*"))
+    app.add_handler(CallbackQueryHandler(settings_button, pattern=r"stngs_"))
+    app.add_handler(CallbackQueryHandler(Miko_about_callback, pattern=r"Miko_"))
+    app.add_handler(CallbackQueryHandler(gitsource_callback, pattern=r"git_source"))
+    app.add_handler(CallbackQueryHandler(stats_back, pattern=r"insider_"))
+    app.add_handler(CallbackQueryHandler(ai_handler_callback, pattern=r"ai_handler"))
+    app.add_handler(CallbackQueryHandler(more_ai_handler_callback, pattern=r"more_ai_handler"))
+    app.add_handler(CallbackQueryHandler(ai_command_callback, pattern=r"ai_command_handler"))
+    app.add_handler(CallbackQueryHandler(anime_command_callback, pattern=r"anime_command_handler"))
+    app.add_handler(CallbackQueryHandler(more_aihandlered_callback, pattern=r"more_aihandlered"))
+    app.add_handler(CallbackQueryHandler(extra_command_callback, pattern=r"extra_command_handler"))
+    app.add_handler(CallbackQueryHandler(genshin_command_callback, pattern=r"genshin_command_handler"))
+
+    # Message handlers
+    app.add_handler(MessageHandler(filters.StatusUpdate.MIGRATE, migrate_chats))
+
     # Error handler
-    app.add_error_handler(error_handler)
+    app.add_error_handler(error_callback)
+
+# ------------------- MAIN -------------------
+def main():
+    register_handlers()
 
     # Start aiohttp webhook server
     web_app = web.Application()
