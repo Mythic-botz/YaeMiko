@@ -54,12 +54,13 @@ except Exception as e:
 
 
 
-# =================== PATCH for PyMongo 4.x count() ===================
-import pymongo.cursor
-
-# --- Patch cursor.count() for PyMongo 4.x ---
+# ========================================================================================================
+# --- PATCH for PyMongo 4.x cursor.count() ---
 def _patched_count(self, *args, **kwargs):
-    """Emulate old cursor.count() using count_documents"""
+    """
+    Emulate old cursor.count() using collection.count_documents().
+    This fixes code that still calls cursor.count() in Motor + PyMongo 4.x
+    """
     try:
         spec = getattr(self, "_Cursor__spec", {})  # old filter
         collection = getattr(self, "_Cursor__collection", None)
@@ -71,15 +72,8 @@ def _patched_count(self, *args, **kwargs):
     except Exception:
         return 0
 
-# Attach patched count to Cursor class
 pymongo.cursor.Cursor.count = _patched_count
-
-# --- Patch no_cursor_timeout to be ignored ---
-_original_find = pymongo.cursor.Cursor.find
-def _patched_find(self, *args, **kwargs):
-    kwargs.pop("no_cursor_timeout", None)  # ignore this option
-    return _original_find(self, *args, **kwargs)
-pymongo.cursor.Cursor.find = _patched_find
+# ========================================================================================================
 # =====================================================================
 
 
