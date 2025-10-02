@@ -13,6 +13,8 @@ import traceback
 from platform import python_version
 from random import choice
 
+from telethon import TelegramClient
+
 import psutil
 import pyrogram
 import telegram
@@ -893,51 +895,64 @@ async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raise ApplicationHandlerStop
 
 
-async def webhook_update(update: dict) -> None:
-    update_obj = Update.de_json(update, dispatcher.bot)
-    await dispatcher.process_update(update_obj)
+# Event loop
+loop = asyncio.get_event_loop()
+
+# PTB Application
+app = Application.builder().token(TOKEN).build()
+
+# Telethon client
+tbot = TelegramClient("tbot", api_id=int(os.getenv("API_ID")), api_hash=os.getenv("API_HASH"))
+
+# ================================================= WEBHOOK HANDLER ================================================= #
+
+async def webhook_update(update: dict):
+    """Handle incoming webhook updates"""
+    try:
+        update_obj = Update.de_json(update, app.bot)
+        # Instead of dispatcher.process_update, push update into PTB queue
+        app.update_queue.put_nowait(update_obj)
+    except Exception as e:
+        LOGGER.error(f"Webhook update error: {e}")
 
 
 async def webhook_handler(request: web.Request) -> web.Response:
     if request.method == "POST":
-        update = await request.json()
-        await webhook_update(update)
-        return web.Response(status=200)
-    return web.Response(status=400)
+        try:
+            update = await request.json()
+            await webhook_update(update)
+            return web.Response(status=200)
+        except Exception as e:
+            LOGGER.error(f"Webhook handler error: {e}")
+            return web.Response(status=500, text=str(e))
+    return web.Response(status=400, text="Bad request")
 
+# ================================================= MAIN ================================================= #
 
-# <=================================================== MAIN ====================================================>
 def main():
-    function(CommandHandler("start", start))
-    function(CommandHandler("help", get_help))
-    function(CallbackQueryHandler(help_button, pattern=r"help_.*"))
-    function(CommandHandler("settings", get_settings))
-    function(CallbackQueryHandler(settings_button, pattern=r"stngs_"))
-    function(CommandHandler("repo", repo))
-    function(CallbackQueryHandler(Miko_about_callback, pattern=r"Miko_"))
-    function(CallbackQueryHandler(gitsource_callback, pattern=r"git_source"))
-    function(CallbackQueryHandler(stats_back, pattern=r"insider_"))
-    function(MessageHandler(filters.StatusUpdate.MIGRATE, migrate_chats))
-    function(CallbackQueryHandler(ai_handler_callback, pattern=r"ai_handler"))
-    function(CallbackQueryHandler(more_ai_handler_callback, pattern=r"more_ai_handler"))
-    function(CallbackQueryHandler(ai_command_callback, pattern=r"ai_command_handler"))
-    function(
-        CallbackQueryHandler(anime_command_callback, pattern=r"anime_command_handler")
-    )
-    function(
-        CallbackQueryHandler(more_aihandlered_callback, pattern=r"more_aihandlered")
-    )
-    function(
-        CallbackQueryHandler(extra_command_callback, pattern=r"extra_command_handler")
-    )
-    function(CommandHandler("ai", ai_command))
-    function(
-        CallbackQueryHandler(
-            genshin_command_callback, pattern=r"genshin_command_handler"
-        )
-    )
-    dispatcher.add_error_handler(error_handler)
-    dispatcher.add_error_handler(error_callback)
+    # Register handlers
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", get_help))
+    app.add_handler(CallbackQueryHandler(help_button, pattern=r"help_.*"))
+    app.add_handler(CommandHandler("settings", get_settings))
+    app.add_handler(CallbackQueryHandler(settings_button, pattern=r"stngs_"))
+    app.add_handler(CommandHandler("repo", repo))
+    app.add_handler(CallbackQueryHandler(Miko_about_callback, pattern=r"Miko_"))
+    app.add_handler(CallbackQueryHandler(gitsource_callback, pattern=r"git_source"))
+    app.add_handler(CallbackQueryHandler(stats_back, pattern=r"insider_"))
+    app.add_handler(MessageHandler(filters.StatusUpdate.MIGRATE, migrate_chats))
+    app.add_handler(CallbackQueryHandler(ai_handler_callback, pattern=r"ai_handler"))
+    app.add_handler(CallbackQueryHandler(more_ai_handler_callback, pattern=r"more_ai_handler"))
+    app.add_handler(CallbackQueryHandler(ai_command_callback, pattern=r"ai_command_handler"))
+    app.add_handler(CallbackQueryHandler(anime_command_callback, pattern=r"anime_command_handler"))
+    app.add_handler(CallbackQueryHandler(more_aihandlered_callback, pattern=r"more_aihandlered"))
+    app.add_handler(CallbackQueryHandler(extra_command_callback, pattern=r"extra_command_handler"))
+    app.add_handler(CommandHandler("ai", ai_command))
+    app.add_handler(CallbackQueryHandler(genshin_command_callback, pattern=r"genshin_command_handler"))
+
+    # Error Handlers
+    app.add_error_handler(error_handler)
+    app.add_error_handler(error_callback)
 
 
 if __name__ == "__main__":
@@ -952,28 +967,32 @@ if __name__ == "__main__":
         global arq
         arq = loop.run_until_complete(init_arq())
         LOGGER.info("ARQ initialized")
-        
+
         # Set up webhook
         WEBHOOK_URL = os.getenv("WEBHOOK_URL")
         if not WEBHOOK_URL:
             raise ValueError("WEBHOOK_URL environment variable not set")
-        app.start()
+
+        # ✅ Proper PTB init
+        loop.run_until_complete(app.initialize())
+        loop.run_until_complete(app.start())
+
         LOGGER.info("Setting webhook")
         loop.run_until_complete(
-            dispatcher.bot.set_webhook(
+            app.bot.set_webhook(
                 url=f"{WEBHOOK_URL}/webhook",
                 allowed_updates=Update.ALL_TYPES,
             )
         )
         LOGGER.info(f"Webhook set to {WEBHOOK_URL}/webhook")
-        
+
         # Start aiohttp server
         web_app = web.Application()
         web_app.router.add_post("/webhook", webhook_handler)
         port = int(os.getenv("PORT", 8000))
         LOGGER.info(f"Starting web server on port {port}")
         web.run_app(web_app, host="0.0.0.0", port=port, loop=loop)
-        
+
     except KeyboardInterrupt:
         pass
     except Exception:
@@ -982,8 +1001,9 @@ if __name__ == "__main__":
     finally:
         try:
             LOGGER.info("Cleaning up sessions")
-            loop.run_until_complete(cleanup())
-            loop.run_until_complete(dispatcher.bot.delete_webhook())
+            loop.run_until_complete(app.stop())
+            loop.run_until_complete(app.shutdown())
+            loop.run_until_complete(app.bot.delete_webhook())
             if loop.is_running():
                 loop.stop()
         finally:
