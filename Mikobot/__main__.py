@@ -941,16 +941,16 @@ app = ApplicationBuilder().token(TOKEN).build()
 # ------------------- IMPORT MODULE HANDLERS -------------------
 # Import your module handlers here
 # Example:
-from Mikobot.plugins.start import start
-from Mikobot.plugins.help import extra_command_handlered, help_button
-from Mikobot.plugins.settings import get_settings, settings_button
-from Mikobot.plugins.repo import repo
-from Mikobot.plugins.ai import ai_command, ai_handler_callback, more_ai_handler_callback, ai_command_callback
-from Mikobot.plugins.anime import anime_command_callback, more_aihandlered_callback
-from Mikobot.plugins.extra import extra_command_callback
-from Mikobot.plugins.genshin import genshin_command_callback
-from Mikobot.plugins.stats import stats_back
-from Mikobot.plugins.migrate import migrate_chats
+#from Mikobot.plugins.start import start
+#from Mikobot.plugins.help import extra_command_handlered, help_button
+#from Mikobot.plugins.settings import get_settings, settings_button
+#from Mikobot.plugins.repo import repo
+#from Mikobot.plugins.ai import ai_command, ai_handler_callback, more_ai_handler_callback, ai_command_callback
+#from Mikobot.plugins.anime import anime_command_callback, more_aihandlered_callback
+#from Mikobot.plugins.extra import extra_command_callback
+#from Mikobot.plugins.genshin import genshin_command_callback
+#from Mikobot.plugins.stats import stats_back
+#from Mikobot.plugins.migrate import migrate_chats
 # Add any other modules here
 
 # ------------------- ERROR HANDLER -------------------
