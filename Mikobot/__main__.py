@@ -53,7 +53,7 @@ from Mikobot import (
 from Mikobot.plugins import ALL_MODULES
 from Mikobot.plugins.helper_funcs.chat_status import is_user_admin
 from Mikobot.plugins.helper_funcs.misc import paginate_modules
-from Mikobot.state import init_arq, cleanup  # Add import for ARQ and cleanup
+from Mikobot.state import init_arq, cleanup
 
 # <=======================================================================================================>
 
@@ -61,6 +61,52 @@ PYTHON_VERSION = python_version()
 PTB_VERSION = telegram.__version__
 PYROGRAM_VERSION = pyrogram.__version__
 TELETHON_VERSION = telethon.__version__
+
+# Initialize dictionaries
+IMPORTED = {}
+MIGRATEABLE = []
+HELPABLE = {}
+STATS = []
+USER_INFO = []
+DATA_IMPORT = []
+DATA_EXPORT = []
+CHAT_SETTINGS = {}
+USER_SETTINGS = {}
+
+# Load modules and populate dictionaries
+for module_name in ALL_MODULES:
+    imported_module = importlib.import_module("Mikobot.plugins." + module_name)
+    if not hasattr(imported_module, "__mod_name__"):
+        imported_module.__mod_name__ = imported_module.__name__
+
+    if imported_module.__mod_name__.lower() not in IMPORTED:
+        IMPORTED[imported_module.__mod_name__.lower()] = imported_module
+    else:
+        raise Exception("Can't have two modules with the same name! Please change one")
+
+    if hasattr(imported_module, "__help__") and imported_module.__help__:
+        HELPABLE[imported_module.__mod_name__.lower()] = imported_module
+
+    if hasattr(imported_module, "__migrate__"):
+        MIGRATEABLE.append(imported_module)
+
+    if hasattr(imported_module, "__stats__"):
+        STATS.append(imported_module)
+
+    if hasattr(imported_module, "__user_info__"):
+        USER_INFO.append(imported_module)
+
+    if hasattr(imported_module, "__import_data__"):
+        DATA_IMPORT.append(imported_module)
+
+    if hasattr(imported_module, "__export_data__"):
+        DATA_EXPORT.append(imported_module)
+
+    if hasattr(imported_module, "__chat_settings__"):
+        CHAT_SETTINGS[imported_module.__mod_name__.lower()] = imported_module
+
+    if hasattr(imported_module, "__user_settings__"):
+        USER_SETTINGS[imported_module.__mod_name__.lower()] = imported_module
 
 # <============================================== FUNCTIONS =========================================================>
 def get_readable_time(seconds: int) -> str:
@@ -119,21 +165,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         [[InlineKeyboardButton(text="◁", callback_data="help_back")]]
                     ),
                 )
-
             elif args[0].lower() == "markdownhelp":
                 IMPORTED["exᴛʀᴀs"].markdown_help_sender(update)
             elif args[0].lower().startswith("stngs_"):
                 match = re.match("stngs_(.*)", args[0].lower())
-                chat = dispatcher.bot.getChat(match.group(1))
-
-                if is_user_admin(chat, update.effective_user.id):
-                    send_settings(match.group(1), update.effective_user.id, False)
+                chat = await dispatcher.bot.get_chat(match.group(1))
+                if await is_user_admin(chat, update.effective_user.id):
+                    await send_settings(match.group(1), update.effective_user.id, False)
                 else:
-                    send_settings(match.group(1), update.effective_user.id, True)
-
+                    await send_settings(match.group(1), update.effective_user.id, True)
             elif args[0][1:].isdigit() and "rules" in IMPORTED:
                 await IMPORTED["rules"].send_rules(update, args[0], from_pm=True)
-
         else:
             first_name = update.effective_user.first_name
             lol = await message.reply_photo(
@@ -176,9 +218,7 @@ async def extra_command_handlered(update: Update, context: ContextTypes.DEFAULT_
             InlineKeyboardButton("HOME", callback_data="Miko_back"),
         ],
     ]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.message.reply_text(
         "𝙎𝙚𝙡𝙚𝙘𝙩 𝙩𝙝𝙚 [𝙨𝙚𝙘𝙩𝙞𝙤𝙣](https://telegra.ph/file/8c092f4e9d303f9497c83.jpg) 𝙩𝙝𝙖𝙩 𝙮𝙤𝙪 𝙬𝙖𝙣𝙩 𝙩𝙤 𝙤𝙥𝙚𝙣",
         reply_markup=reply_markup,
@@ -223,7 +263,6 @@ async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.message.reply_text(
         "🧠 *Here are the options for* [𝗬𝗔𝗘 𝗠𝗜𝗞𝗢](https://telegra.ph/file/ed2d9c3693cacc9b0464e.jpg):",
         reply_markup=reply_markup,
@@ -426,14 +465,11 @@ async def genshin_command_callback(update: Update, context: ContextTypes.DEFAULT
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Log the error and send a telegram message to notify the developer."""
     LOGGER.error(msg="Exception while handling an update:", exc_info=context.error)
-
     tb_list = traceback.format_exception(
         None, context.error, context.error.__traceback__
     )
     tb = "".join(tb_list)
-
     message = (
         "An exception was raised while handling an update\n"
         "<pre>update = {}</pre>\n\n"
@@ -442,7 +478,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         html.escape(json.dumps(update.to_dict(), indent=2, ensure_ascii=False)),
         html.escape(tb),
     )
-
     if len(message) >= 4096:
         message = message[:4096]
     await context.bot.send_message(
@@ -478,9 +513,6 @@ async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prev_match = re.match(r"help_prev\((.+?)\)", query.data)
     next_match = re.match(r"help_next\((.+?)\)", query.data)
     back_match = re.match(r"help_back", query.data)
-
-    print(query.message.chat.id)
-
     try:
         if mod_match:
             module = mod_match.group(1)
@@ -496,7 +528,6 @@ async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     [[InlineKeyboardButton(text="◁", callback_data="help_back")]]
                 ),
             )
-
         elif prev_match:
             curr_page = int(prev_match.group(1))
             await query.message.edit_text(
@@ -506,7 +537,6 @@ async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     paginate_modules(curr_page - 1, HELPABLE, "help")
                 ),
             )
-
         elif next_match:
             next_page = int(next_match.group(1))
             await query.message.edit_text(
@@ -516,7 +546,6 @@ async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     paginate_modules(next_page + 1, HELPABLE, "help")
                 ),
             )
-
         elif back_match:
             await query.message.edit_text(
                 text=HELP_STRINGS,
@@ -525,9 +554,7 @@ async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     paginate_modules(0, HELPABLE, "help")
                 ),
             )
-
         await context.bot.answer_callback_query(query.id)
-
     except BadRequest:
         pass
 
@@ -541,17 +568,14 @@ async def stats_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
         disk = psutil.disk_usage("/").percent
         text = f"""
 𝙎𝙮𝙨𝙩𝙚𝙢 𝙨𝙩𝙖𝙩𝙨@𝙔𝙖𝙚𝙈𝙞𝙠𝙤_𝙍𝙤𝙭𝙗𝙤𝙩
-➖➖➖➖➖➖
-UPTIME ➼ {uptime}
-CPU ➼ {cpu}%
-RAM ➼ {mem}%
-DISK ➼ {disk}%
-
-PYTHON ➼ {PYTHON_VERSION}
-
-PTB ➼ {PTB_VERSION}
-TELETHON ➼ {TELETHON_VERSION}
-PYROGRAM ➼ {PYROGRAM_VERSION}
+➼ UPTIME: {uptime}
+➼ CPU: {cpu}%
+➼ RAM: {mem}%
+➼ DISK: {disk}%
+➼ PYTHON: {PYTHON_VERSION}
+➼ PTB: {PTB_VERSION}
+➼ TELETHON: {TELETHON_VERSION}
+➼ PYROGRAM: {PYROGRAM_VERSION}
 """
         await query.answer(text=text, show_alert=True)
 
@@ -559,16 +583,13 @@ PYROGRAM ➼ {PYROGRAM_VERSION}
 async def gitsource_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     if query.data == "git_source":
         source_link = "https://github.com/Mythic-botz/YaeMiko"
         message_text = (
             f"*Here is the link for the public source repo*:\n\n{source_link}"
         )
-
         keyboard = [[InlineKeyboardButton(text="◁", callback_data="Miko_back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-
         await query.edit_message_text(
             message_text,
             parse_mode=ParseMode.MARKDOWN,
@@ -580,7 +601,6 @@ async def gitsource_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def repo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source_link = "https://github.com/Mythic-botz/YaeMiko"
     message_text = f"*Here is the link for the public source repo*:\n\n{source_link}"
-
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=message_text,
@@ -622,7 +642,7 @@ async def Miko_about_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
     elif query.data == "Miko_support":
         message_text = (
-            "*Our bot leverages SQL, MongoDB, Telegram, MTProto for secure and efficient operations. It resides on a high-speed server, integrates numerous APIs, ensuring quick and versatile responses to user queries.*"
+            f"*Our bot leverages SQL, MongoDB, Telegram, MTProto for secure and efficient operations. It resides on a high-speed server, integrates numerous APIs, ensuring quick and versatile responses to user queries.*"
             f"\n\n*If you find any bug in {BOT_NAME} Please report it at the support chat.*"
         )
         await query.message.edit_text(
@@ -633,10 +653,10 @@ async def Miko_about_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 [
                     [
                         InlineKeyboardButton(
-                            text="SUPPORT", url=f"https://t.me/{SUPPORT_CHAT}"
+                            "SUPPORT", url=f"https://t.me/{SUPPORT_CHAT}"
                         ),
                         InlineKeyboardButton(
-                            text="DEVELOPER", url=f"tg://user?id={OWNER_ID}"
+                            "DEVELOPER", url=f"tg://user?id={OWNER_ID}"
                         ),
                     ],
                     [
@@ -658,7 +678,6 @@ async def Miko_about_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def get_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     args = update.effective_message.text.split(None, 1)
-
     if chat.type != chat.PRIVATE:
         if len(args) >= 2 and any(args[1].lower() == x for x in HELPABLE):
             module = args[1].lower()
@@ -669,9 +688,7 @@ async def get_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         [
                             InlineKeyboardButton(
                                 text="HELP",
-                                url="https://t.me/{}?start=ghelp_{}".format(
-                                    context.bot.username, module
-                                ),
+                                url=f"https://t.me/{context.bot.username}?start=ghelp_{module}",
                             )
                         ]
                     ]
@@ -685,9 +702,7 @@ async def get_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     [
                         InlineKeyboardButton(
                             text="OPEN IN PM",
-                            url="https://t.me/{}?start=help".format(
-                                context.bot.username
-                            ),
+                            url=f"https://t.me/{context.bot.username}?start=help",
                         )
                     ],
                     [
@@ -701,13 +716,10 @@ async def get_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
         return
-
     elif len(args) >= 2 and any(args[1].lower() == x for x in HELPABLE):
         module = args[1].lower()
         text = (
-            "Here is the available help for the *{}* module:\n".format(
-                HELPABLE[module].__mod_name__
-            )
+            f"Here is the available help for the *{HELPABLE[module].__mod_name__}* module:\n"
             + HELPABLE[module].__help__
         )
         await send_help(
@@ -717,7 +729,6 @@ async def get_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [[InlineKeyboardButton(text="◁", callback_data="help_back")]]
             ),
         )
-
     else:
         await send_help(chat.id, HELP_STRINGS)
 
@@ -726,7 +737,7 @@ async def send_settings(chat_id, user_id, user=False):
     if user:
         if USER_SETTINGS:
             settings = "\n\n".join(
-                "*{}*:\n{}".format(mod.__mod_name__, mod.__user_settings__(user_id))
+                f"*{mod.__mod_name__}*:\n{mod.__user_settings__(user_id)}"
                 for mod in USER_SETTINGS.values()
             )
             await dispatcher.bot.send_message(
@@ -734,7 +745,6 @@ async def send_settings(chat_id, user_id, user=False):
                 "These are your current settings:" + "\n\n" + settings,
                 parse_mode=ParseMode.MARKDOWN,
             )
-
         else:
             await dispatcher.bot.send_message(
                 user_id,
@@ -743,12 +753,10 @@ async def send_settings(chat_id, user_id, user=False):
             )
     else:
         if CHAT_SETTINGS:
-            chat_name = dispatcher.bot.getChat(chat_id).title
+            chat_name = (await dispatcher.bot.get_chat(chat_id)).title
             await dispatcher.bot.send_message(
                 user_id,
-                text="Which module would you like to check {}'s settings for?".format(
-                    chat_name
-                ),
+                text=f"Which module would you like to check {chat_name}'s settings for?",
                 reply_markup=InlineKeyboardMarkup(
                     paginate_modules(0, CHAT_SETTINGS, "stngs", chat=chat_id)
                 ),
@@ -757,7 +765,7 @@ async def send_settings(chat_id, user_id, user=False):
             await dispatcher.bot.send_message(
                 user_id,
                 "Seems like there aren't any chat settings available :'(\nSend this "
-                "in a group chat you're admin in to find disclosing its current settings!",
+                "in a group chat you're admin in to find its current settings!",
                 parse_mode=ParseMode.MARKDOWN,
             )
 
@@ -774,10 +782,8 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if mod_match:
             chat_id = mod_match.group(1)
             module = mod_match.group(2)
-            chat = bot.get_chat(chat_id)
-            text = "*{}* has the following settings for the *{}* module:\n\n".format(
-                escape_markdown(chat.title), CHAT_SETTINGS[module].__mod_name__
-            ) + CHAT_SETTINGS[module].__chat_settings__(chat_id, user.id)
+            chat = await bot.get_chat(chat_id)
+            text = f"*{escape_markdown(chat.title)}* has the following settings for the *{CHAT_SETTINGS[module].__mod_name__}* module:\n\n" + CHAT_SETTINGS[module].__chat_settings__(chat_id, user.id)
             await query.message.reply_text(
                 text=text,
                 parse_mode=ParseMode.MARKDOWN,
@@ -786,54 +792,50 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         [
                             InlineKeyboardButton(
                                 text="◁",
-                                callback_data="stngs_back({})".format(chat_id),
+                                callback_data=f"stngs_back({chat_id})",
                             )
                         ]
                     ]
                 ),
             )
-
         elif prev_match:
             chat_id = prev_match.group(1)
             curr_page = int(prev_match.group(2))
-            chat = bot.get_chat(chat_id)
+            chat = await bot.get_chat(chat_id)
             await query.message.reply_text(
-                "Hi there! There are quite a few settings for {} - go ahead and pick what "
-                "you're interested in.".format(chat.title),
+                f"Hi there! There are quite a few settings for {chat.title} - go ahead and pick what "
+                "you're interested in.",
                 reply_markup=InlineKeyboardMarkup(
                     paginate_modules(
                         curr_page - 1, CHAT_SETTINGS, "stngs", chat=chat_id
                     )
                 ),
             )
-
         elif next_match:
             chat_id = next_match.group(1)
             next_page = int(next_match.group(2))
-            chat = bot.get_chat(chat_id)
+            chat = await bot.get_chat(chat_id)
             await query.message.reply_text(
-                "Hi there! There are quite a few settings for {} - go ahead and pick what "
-                "you're interested in.".format(chat.title),
+                f"Hi there! There are quite a few settings for {chat.title} - go ahead and pick what "
+                "you're interested in.",
                 reply_markup=InlineKeyboardMarkup(
                     paginate_modules(
                         next_page + 1, CHAT_SETTINGS, "stngs", chat=chat_id
                     )
                 ),
             )
-
         elif back_match:
             chat_id = back_match.group(1)
-            chat = bot.get_chat(chat_id)
+            chat = await bot.get_chat(chat_id)
             await query.message.reply_text(
-                text="Hi there! There are quite a few settings for {} - go ahead and pick what "
-                "you're interested in.".format(escape_markdown(chat.title)),
+                text=f"Hi there! There are quite a few settings for {escape_markdown(chat.title)} - go ahead and pick what "
+                "you're interested in.",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=InlineKeyboardMarkup(
                     paginate_modules(0, CHAT_SETTINGS, "stngs", chat=chat_id)
                 ),
             )
-
-        bot.answer_callback_query(query.id)
+        await bot.answer_callback_query(query.id)
         await query.message.delete()
     except BadRequest as excp:
         if excp.message not in [
@@ -848,9 +850,8 @@ async def get_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
     msg = update.effective_message
-
     if chat.type != chat.PRIVATE:
-        if is_user_admin(chat, user.id):
+        if await is_user_admin(chat, user.id):
             text = "Click here to get this chat's settings, as well as yours."
             await msg.reply_text(
                 text,
@@ -859,9 +860,7 @@ async def get_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         [
                             InlineKeyboardButton(
                                 text="SETTINGS",
-                                url="t.me/{}?start=stngs_{}".format(
-                                    context.bot.username, chat.id
-                                ),
+                                url=f"t.me/{context.bot.username}?start=stngs_{chat.id}",
                             )
                         ]
                     ]
@@ -869,7 +868,7 @@ async def get_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             text = "Click here to check your settings."
-
+            await msg.reply_text(text)
     else:
         await send_settings(chat.id, user.id, True)
 
@@ -884,55 +883,46 @@ async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_chat = update.effective_chat.id
     else:
         return
-
-    LOGGER.info("Migrating from %s, ᴛᴏ %s", str(old_chat), str(new_chat))
+    LOGGER.info("Migrating from %s to %s", str(old_chat), str(new_chat))
     for mod in MIGRATEABLE:
         with contextlib.suppress(KeyError, AttributeError):
             mod.__migrate__(old_chat, new_chat)
-
     LOGGER.info("Successfully Migrated!")
     raise ApplicationHandlerStop
 
 
-# <=======================================================================================================>
-
 # <=================================================== MAIN ====================================================>
 def main():
     function(CommandHandler("start", start))
-
-    function(CommandHandler("help", extra_command_handlered))
+    function(CommandHandler("help", get_help))
     function(CallbackQueryHandler(help_button, pattern=r"help_.*"))
-
     function(CommandHandler("settings", get_settings))
     function(CallbackQueryHandler(settings_button, pattern=r"stngs_"))
     function(CommandHandler("repo", repo))
-
     function(CallbackQueryHandler(Miko_about_callback, pattern=r"Miko_"))
     function(CallbackQueryHandler(gitsource_callback, pattern=r"git_source"))
     function(CallbackQueryHandler(stats_back, pattern=r"insider_"))
     function(MessageHandler(filters.StatusUpdate.MIGRATE, migrate_chats))
     function(CallbackQueryHandler(ai_handler_callback, pattern=r"ai_handler"))
     function(CallbackQueryHandler(more_ai_handler_callback, pattern=r"more_ai_handler"))
-    function(CallbackQueryHandler(ai_command_callback, pattern="ai_command_handler"))
+    function(CallbackQueryHandler(ai_command_callback, pattern=r"ai_command_handler"))
     function(
-        CallbackQueryHandler(anime_command_callback, pattern="anime_command_handler")
+        CallbackQueryHandler(anime_command_callback, pattern=r"anime_command_handler")
     )
     function(
-        CallbackQueryHandler(more_aihandlered_callback, pattern="more_aihandlered")
+        CallbackQueryHandler(more_aihandlered_callback, pattern=r"more_aihandlered")
     )
     function(
-        CallbackQueryHandler(extra_command_callback, pattern="extra_command_handler")
+        CallbackQueryHandler(extra_command_callback, pattern=r"extra_command_handler")
     )
-
     function(CommandHandler("ai", ai_command))
     function(
         CallbackQueryHandler(
-            genshin_command_callback, pattern="genshin_command_handler"
+            genshin_command_callback, pattern=r"genshin_command_handler"
         )
     )
-
+    dispatcher.add_error_handler(error_handler)
     dispatcher.add_error_handler(error_callback)
-
     LOGGER.info("Mikobot is starting >> Using long polling.")
     dispatcher.run_polling(timeout=15, drop_pending_updates=True)
 
