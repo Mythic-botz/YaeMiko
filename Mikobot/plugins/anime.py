@@ -2,6 +2,7 @@
 # https://github.com/Team-ProjectCodeX
 
 # <============================================== IMPORTS =========================================================>
+import pymongo  # make sure pymongo module is imported
 import asyncio
 import json
 import logging
