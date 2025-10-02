@@ -31,6 +31,7 @@ from telegram.error import (
     TimedOut,
 )
 from telegram.ext import (
+    Application,
     ApplicationHandlerStop,
     CallbackQueryHandler,
     CommandHandler,
