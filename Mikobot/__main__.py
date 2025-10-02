@@ -1,7 +1,7 @@
 # https://github.com/Mythic-botz/YaeMiko
 # https://github.com/Team-ProjectCodeX
 
-# <============================================== IMPORTS =========================================================>
+# ------------------- IMPORTS -------------------
 import asyncio
 import contextlib
 import importlib
@@ -17,7 +17,7 @@ from random import choice
 import psutil
 import telegram
 from aiohttp import web
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, Chat, User, Message
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, ChatMigrated, Forbidden, NetworkError, TelegramError, TimedOut
 from telegram.ext import (
@@ -27,7 +27,9 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     filters,
+    ApplicationHandlerStop,
 )
+from telegram.helpers import escape_markdown
 
 from Mikobot import (
     BOT_NAME,
@@ -42,14 +44,14 @@ from Mikobot.plugins.helper_funcs.chat_status import is_user_admin
 from Mikobot.plugins.helper_funcs.misc import paginate_modules
 from Mikobot.state import init_arq, cleanup
 
-# <============================================== LOGGING =========================================================>
+# ------------------- LOGGING -------------------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 LOGGER = logging.getLogger("Mikobot")
 
-# <============================================== ENV VARIABLES =========================================================>
+# ------------------- ENV VARIABLES -------------------
 TOKEN = os.getenv("TOKEN")
 if not TOKEN:
     raise ValueError("TOKEN environment variable not set")
@@ -60,13 +62,13 @@ if not WEBHOOK_URL:
 
 PORT = int(os.getenv("PORT", 8000))
 
-# <============================================== EVENT LOOP =========================================================>
+# ------------------- EVENT LOOP -------------------
 loop = asyncio.get_event_loop()
 
-# <============================================== PTB APPLICATION =========================================================>
+# ------------------- PTB APPLICATION -------------------
 app = ApplicationBuilder().token(TOKEN).build()
 
-# <============================================== MODULE DICTIONARIES =========================================================>
+# ------------------- MODULE DICTIONARIES -------------------
 IMPORTED = {}
 HELPABLE = {}
 STATS = []
@@ -77,7 +79,7 @@ DATA_EXPORT = []
 CHAT_SETTINGS = {}
 USER_SETTINGS = {}
 
-# <============================================== MODULE LOADING =========================================================>
+# ------------------- MODULE LOADING -------------------
 def load_modules():
     global IMPORTED, HELPABLE, STATS, USER_INFO, MIGRATEABLE, DATA_IMPORT, DATA_EXPORT, CHAT_SETTINGS, USER_SETTINGS
     for module_name in ALL_MODULES:
@@ -118,7 +120,7 @@ def load_modules():
         except Exception as e:
             LOGGER.error(f"Failed to load module {module_name}: {e}", exc_info=True)
 
-# <============================================== FUNCTIONS =========================================================>
+# ------------------- FUNCTIONS -------------------
 def get_readable_time(seconds: int) -> str:
     count = 0
     ping_time = ""
@@ -285,7 +287,7 @@ async def ai_command_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     if query.data == "ai_command_handler":
         await query.answer()
         await query.message.edit_text(
-            "🧠 *Here are the options for* [𝗬𝗔𝗘 𝗠𝗜𝗞𝗢](https://telegra.ph/file/ed2d9c3693cacc9b0464e.jpg):",
+            "🧠 *Here are the options for* [𝗬𝗔𝗘 �_M𝗜𝗞𝗢](https://telegra.ph/file/ed2d9c3693cacc9b0464e.jpg):",
             reply_markup=InlineKeyboardMarkup(
                 [
                     [
@@ -774,6 +776,37 @@ async def send_settings(chat_id, user_id, user=False):
             )
 
 
+async def get_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat  # type: Optional[Chat]
+    user = update.effective_user  # type: Optional[User]
+    msg = update.effective_message  # type: Optional[Message]
+
+    # ONLY send settings in PM
+    if chat.type != chat.PRIVATE:
+        if is_user_admin(chat, user.id):
+            text = "Click here to get this chat's settings, as well as yours."
+            await msg.reply_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                text="SETTINGS",
+                                url="t.me/{}?start=stngs_{}".format(
+                                    context.bot.username, chat.id
+                                ),
+                            )
+                        ]
+                    ]
+                ),
+            )
+        else:
+            text = "Click here to check your settings."
+
+    else:
+        await send_settings(chat.id, user.id, True)
+
+
 async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = update.effective_user
@@ -851,7 +884,7 @@ async def settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.effective_message
+    msg = update.effective_message  # type: Optional[Message]
     if msg.migrate_to_chat_id:
         old_chat = update.effective_chat.id
         new_chat = msg.migrate_to_chat_id
@@ -860,14 +893,17 @@ async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_chat = update.effective_chat.id
     else:
         return
-    LOGGER.info("Migrating from %s to %s", str(old_chat), str(new_chat))
+
+    LOGGER.info("Migrating from %s, ᴛᴏ %s", str(old_chat), str(new_chat))
     for mod in MIGRATEABLE:
         with contextlib.suppress(KeyError, AttributeError):
             mod.__migrate__(old_chat, new_chat)
+
     LOGGER.info("Successfully Migrated!")
+    raise ApplicationHandlerStop
 
 
-# <============================================== REGISTER HANDLERS =========================================================>
+# ------------------- REGISTER ALL HANDLERS -------------------
 def register_handlers():
     # Core commands
     app.add_handler(CommandHandler("start", start))
@@ -894,7 +930,7 @@ def register_handlers():
     app.add_handler(MessageHandler(filters.StatusUpdate.MIGRATE, migrate_chats))
 
     # Error handler
-    app.add_error_handler(error_handler)
+    app.add_error_handler(error_callback)
 
     # Log registered handlers
     LOGGER.info("Registered command handlers:")
@@ -904,7 +940,7 @@ def register_handlers():
         elif isinstance(handler, CallbackQueryHandler):
             LOGGER.info(f"Callback pattern: {handler.pattern}")
 
-# <============================================== WEBHOOK HANDLER =========================================================>
+# ------------------- WEBHOOK HANDLER -------------------
 async def webhook_update(update: dict):
     try:
         update_obj = Update.de_json(update, app.bot)
@@ -925,7 +961,7 @@ async def webhook_handler(request: web.Request) -> web.Response:
     return web.Response(status=400, text="Bad request")
 
 
-# <============================================== MAIN =========================================================>
+# ------------------- MAIN -------------------
 def main():
     # Load modules
     LOGGER.info("Loading modules: " + str(ALL_MODULES))
@@ -947,7 +983,7 @@ def main():
     web.run_app(web_app, host="0.0.0.0", port=PORT, loop=loop)
 
 
-# <============================================== RUN =========================================================>
+# ------------------- RUN -------------------
 if __name__ == "__main__":
     try:
         LOGGER.info("Starting Mikobot...")
@@ -969,7 +1005,6 @@ if __name__ == "__main__":
         LOGGER.error(traceback.format_exc())
     finally:
         try:
-            loop.run_until_complete(cleanup())
             loop.run_until_complete(app.stop())
             loop.run_until_complete(app.shutdown())
             loop.run_until_complete(app.bot.delete_webhook())
