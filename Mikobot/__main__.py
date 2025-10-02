@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import importlib
 import json
+import os
 import re
 import time
 import traceback
@@ -16,6 +17,7 @@ import psutil
 import pyrogram
 import telegram
 import telethon
+from aiohttp import web
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.error import (
@@ -275,7 +277,7 @@ async def ai_command_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     if query.data == "ai_command_handler":
         await query.answer()
         await query.message.edit_text(
-            "🧠 *Here are the options for* [𝗬𝗔𝗘 𝗠𝗜𝗞𝗢](https://telegra.ph/file/ed2d9c3693cacc9b0464e.jpg):",
+            "🧠 *Here are the options for* [𝗬𝗔𝗘 �_M𝗜𝗞𝗢](https://telegra.ph/file/ed2d9c3693cacc9b0464e.jpg):",
             reply_markup=InlineKeyboardMarkup(
                 [
                     [
@@ -891,6 +893,19 @@ async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raise ApplicationHandlerStop
 
 
+async def webhook_update(update: dict) -> None:
+    update_obj = Update.de_json(update, dispatcher.bot)
+    await dispatcher.process_update(update_obj)
+
+
+async def webhook_handler(request: web.Request) -> web.Response:
+    if request.method == "POST":
+        update = await request.json()
+        await webhook_update(update)
+        return web.Response(status=200)
+    return web.Response(status=400)
+
+
 # <=================================================== MAIN ====================================================>
 def main():
     function(CommandHandler("start", start))
@@ -923,8 +938,6 @@ def main():
     )
     dispatcher.add_error_handler(error_handler)
     dispatcher.add_error_handler(error_callback)
-    LOGGER.info("Mikobot is starting >> Using long polling.")
-    dispatcher.run_polling(timeout=15, drop_pending_updates=True)
 
 
 if __name__ == "__main__":
@@ -939,8 +952,28 @@ if __name__ == "__main__":
         global arq
         arq = loop.run_until_complete(init_arq())
         LOGGER.info("ARQ initialized")
+        
+        # Set up webhook
+        WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+        if not WEBHOOK_URL:
+            raise ValueError("WEBHOOK_URL environment variable not set")
         app.start()
-        main()
+        LOGGER.info("Setting webhook")
+        loop.run_until_complete(
+            dispatcher.bot.set_webhook(
+                url=f"{WEBHOOK_URL}/webhook",
+                allowed_updates=Update.ALL_TYPES,
+            )
+        )
+        LOGGER.info(f"Webhook set to {WEBHOOK_URL}/webhook")
+        
+        # Start aiohttp server
+        web_app = web.Application()
+        web_app.router.add_post("/webhook", webhook_handler)
+        port = int(os.getenv("PORT", 8000))
+        LOGGER.info(f"Starting web server on port {port}")
+        web.run_app(web_app, host="0.0.0.0", port=port, loop=loop)
+        
     except KeyboardInterrupt:
         pass
     except Exception:
@@ -950,6 +983,7 @@ if __name__ == "__main__":
         try:
             LOGGER.info("Cleaning up sessions")
             loop.run_until_complete(cleanup())
+            loop.run_until_complete(dispatcher.bot.delete_webhook())
             if loop.is_running():
                 loop.stop()
         finally:
