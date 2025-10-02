@@ -57,16 +57,29 @@ except Exception as e:
 # =================== PATCH for PyMongo 4.x count() ===================
 import pymongo.cursor
 
-_original_count = pymongo.cursor.Cursor.count
+# --- Patch cursor.count() for PyMongo 4.x ---
 def _patched_count(self, *args, **kwargs):
-    if hasattr(self, "_Cursor__collection"):
-        coll = self._Cursor__collection
-    else:
-        coll = getattr(self, "collection", None)
-    if coll is None:
+    """Emulate old cursor.count() using count_documents"""
+    try:
+        spec = getattr(self, "_Cursor__spec", {})  # old filter
+        collection = getattr(self, "_Cursor__collection", None)
+        if not collection:
+            collection = getattr(self, "collection", None)
+        if not collection:
+            return 0
+        return collection.count_documents(spec)
+    except Exception:
         return 0
-    return coll.count_documents(self._Cursor__spec)
+
+# Attach patched count to Cursor class
 pymongo.cursor.Cursor.count = _patched_count
+
+# --- Patch no_cursor_timeout to be ignored ---
+_original_find = pymongo.cursor.Cursor.find
+def _patched_find(self, *args, **kwargs):
+    kwargs.pop("no_cursor_timeout", None)  # ignore this option
+    return _original_find(self, *args, **kwargs)
+pymongo.cursor.Cursor.find = _patched_find
 # =====================================================================
 
 
