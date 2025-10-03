@@ -43,7 +43,7 @@ from Mikobot.plugins import ALL_MODULES
 from Mikobot.plugins.helper_funcs.chat_status import is_user_admin
 from Mikobot.plugins.helper_funcs.misc import paginate_modules
 from Mikobot.state import init_arq, cleanup
-from Mikobot.plugins.cust_filter import __handlers__
+from Mikobot.plugins.cust_filters import __handlers__
 
 # ------------------- LOGGING -------------------
 logging.basicConfig(
