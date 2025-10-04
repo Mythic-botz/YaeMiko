@@ -726,6 +726,9 @@ doin?
 ➠ Now Supports media spoilers too, and media caption.
 """
 
+
+    app.add_handler(CommandHandler("filter", filters))
+
 __mod_name__ = "FILTERS"
 
 # <================================================ HANDLER =======================================================>
