@@ -733,7 +733,7 @@ __mod_name__ = "FILTERS"
 
 # <================================================ HANDLER =======================================================>
 FILTER_HANDLER = CommandHandler("filters", filters, block=False)
-FILTER_HANDLER = CommandHandler("filter", add_filter, block=False)
+FILTER_HANDLER = CommandHandler("filter", addnew_filter, block=False)
 STOP_HANDLER = CommandHandler("stop", stop_filter, block=False)
 RMALLFILTER_HANDLER = CommandHandler(
     "removeallfilters",
