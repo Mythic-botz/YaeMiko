@@ -727,7 +727,7 @@ doin?
 """
 
 
-    app.add_handler(CommandHandler("filter", filters))
+    #app.add_handler(CommandHandler("filter", filters))
 
 __mod_name__ = "FILTERS"
 
