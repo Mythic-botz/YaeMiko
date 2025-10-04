@@ -921,7 +921,7 @@ def register_handlers():
     app.add_handler(CommandHandler("settings", get_settings))
     app.add_handler(CommandHandler("repo", repo))
     app.add_handler(CommandHandler("ai", ai_command))
-    #app.add_handler(CommandHandler("filter", add_filter))
+    app.add_handler(CommandHandler("filter", add_filter))
 
     # Callback queries
     app.add_handler(CallbackQueryHandler(help_button, pattern=r"help_.*"))
