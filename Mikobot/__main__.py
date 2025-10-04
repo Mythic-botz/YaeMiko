@@ -44,8 +44,16 @@ from Mikobot.plugins.helper_funcs.chat_status import is_user_admin
 from Mikobot.plugins.helper_funcs.misc import paginate_modules
 from Mikobot.state import init_arq, cleanup
 from Infamous.karma import *
-from Mikobot.plugins.cust_filters import *
 
+from Mikobot.plugins.cust_filters import (
+    FILTER_HANDLER,
+    STOP_HANDLER,
+    LIST_HANDLER,
+    CUST_FILTER_HANDLER,
+    RMALLFILTER_HANDLER,
+    RMALLFILTER_CALLBACK,
+    __migrate__,
+)
 # ------------------- LOGGING -------------------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
